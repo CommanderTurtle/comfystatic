@@ -1,0 +1,6 @@
+source/
+dist/
+node_modules/
+.work/
+test-results/
+.env

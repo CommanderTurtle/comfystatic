@@ -1,0 +1,22 @@
+:root { --cs-bar-height: 42px; }
+body { padding-top: var(--cs-bar-height) !important; height: 100dvh; box-sizing: border-box; }
+#vue-app { top: var(--cs-bar-height) !important; height: calc(100dvh - var(--cs-bar-height)) !important; }
+#comfystatic-toolbar { position: fixed; inset: 0 0 auto; z-index: 1000; height: var(--cs-bar-height); display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--comfy-menu-bg, #202020); color: var(--fg-color, #dedede); border-bottom: 1px solid var(--border-color, #444); font: 13px system-ui, sans-serif; }
+#comfystatic-toolbar strong { font-size: 14px; margin-right: 12px; letter-spacing: -.3px; }
+#comfystatic-toolbar button, .cs-dialog button { border: 1px solid var(--border-color, #555); border-radius: 5px; padding: 5px 10px; background: var(--comfy-input-bg, #303030); color: inherit; cursor: pointer; }
+#comfystatic-toolbar button:hover, .cs-dialog button:hover { border-color: #969696; }
+#comfystatic-toolbar span { margin-left: auto; opacity: .65; font-size: 11px; white-space: nowrap; }
+.cs-dialog { width: min(760px, 90vw); padding: 20px; color: var(--fg-color, #eee); background: var(--comfy-menu-bg, #222); border: 1px solid #555; border-radius: 12px; }
+.cs-dialog::backdrop { background: #0009; }
+.cs-dialog h2 { margin: 0 0 16px; font: 600 18px system-ui; }
+.cs-dialog textarea { width: 100%; height: 45vh; box-sizing: border-box; padding: 12px; resize: vertical; background: var(--comfy-input-bg, #151515); color: inherit; border: 1px solid #555; border-radius: 6px; font: 13px monospace; }
+.cs-dialog footer { display: flex; justify-content: flex-end; gap: 10px; }
+.cs-dialog p { color: #ffa29e; }
+.queue-button-group, [data-testid="queue-button"], [data-testid="queue-mode-menu-trigger"],
+[data-testid="queue-overlay-toggle"], [data-testid="active-jobs-indicator"], [data-testid="queue-inline-progress"],
+[data-testid="help-center-button"], [data-testid="feedback-embed"], .comfyui-manager-button,
+.comfy-menu-queue-size, #queue-button, #queue-front-button, #comfyui-manager-button { display: none !important; }
+[data-testid="login-button"], [data-testid="apps-tab-button"], .templates-tab-button,
+button[aria-label="Cancel current run"], button[aria-label="Toggle Bottom Panel"],
+button[aria-label="Enter app mode"] { display: none !important; }
+@media (max-width: 620px) { #comfystatic-toolbar { gap: 4px; padding: 0 6px; } #comfystatic-toolbar strong { margin-right: 2px; } #comfystatic-toolbar span { display: none; } #comfystatic-toolbar button { padding: 4px; font-size: 11px; } }

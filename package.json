@@ -1,0 +1,17 @@
+{
+  "name": "comfystatic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "bun scripts/sync.ts",
+    "build": "bun scripts/build.ts",
+    "dev": "bun scripts/serve.ts",
+    "start": "bun scripts/serve.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "fflate": "^0.8.3"
+  }
+}
