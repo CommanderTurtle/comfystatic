@@ -18,6 +18,7 @@ await Bun.write(join(stage, 'comfystatic/nodes.json'), JSON.stringify(await node
 await Bun.write(join(stage, 'comfystatic/config.json'), JSON.stringify({ frontend: version.version,
   extensions: [...custom, '/extensions/comfystatic/editor.js'], capturedNodes: await nodes.exists() }))
 for (const [entry, output, format] of [['src/offline.ts', 'comfystatic/offline.js', 'iife'],
+  ['src/link-frame.ts', 'comfystatic/link-import.js', 'iife'],
   ['src/editor.ts', 'extensions/comfystatic/editor.js', 'esm']] as const) {
   const result = await Bun.build({ entrypoints: [join(root, entry)], target: 'browser', format,
     minify: false, external: ['../../scripts/app.js'] })
@@ -25,6 +26,11 @@ for (const [entry, output, format] of [['src/offline.ts', 'comfystatic/offline.j
   await Bun.write(join(stage, output), result.outputs[0]!)
 }
 await cp(join(root, 'src/editor.css'), join(stage, 'comfystatic/editor.css'))
+await cp(join(root, 'src/link-import.html'), join(stage, 'comfystatic/link-import.html'))
+for (const [input, output] of [['LICENSE', 'lnkr-LICENSE'], ['upstream.json', 'lnkr-upstream.json'],
+  ['vendor/licenses/pako-NOTICE.txt', 'pako-NOTICE.txt']]) {
+  await cp(join(root, 'src/vendor/lnkr', input!), join(stage, 'comfystatic', output!))
+}
 const csp = "default-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
 let html = await Bun.file(join(stage, 'index.html')).text()
 html = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}"><script src="./comfystatic/offline.js"></script><link rel="stylesheet" href="./comfystatic/editor.css">`)

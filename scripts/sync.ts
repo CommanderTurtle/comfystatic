@@ -1,6 +1,7 @@
 import { mkdir, rename, rm, cp } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { unzipSync } from 'fflate'
+import { syncLnkr } from './sync-lnkr'
 
 const root = resolve(import.meta.dir, '..')
 const args = process.argv.slice(2)
@@ -95,4 +96,5 @@ for (let i = 0; i < args.length; i++) if (args[i] === '--custom-web') {
   if (split < 1 || !/^[\w.-]+$/.test(name) || name === '..') throw new Error('--custom-web expects extension-name=directory')
   await cp(resolve(dir), join(root, 'source/snapshot/web/extensions', name), { recursive: true })
 }
+await syncLnkr()
 console.log('Source ready. Run bun run build. Existing node snapshots are retained unless --comfy-url replaces them.')

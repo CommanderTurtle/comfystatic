@@ -12,6 +12,9 @@ body { padding-top: var(--cs-bar-height) !important; height: 100dvh; box-sizing:
 .cs-dialog textarea { width: 100%; height: 45vh; box-sizing: border-box; padding: 12px; resize: vertical; background: var(--comfy-input-bg, #151515); color: inherit; border: 1px solid #555; border-radius: 6px; font: 13px monospace; }
 .cs-dialog footer { display: flex; justify-content: flex-end; gap: 10px; }
 .cs-dialog p { color: #ffa29e; }
+.cs-link-dialog input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #555; border-radius: 5px; background: var(--comfy-input-bg, #151515); color: inherit; }
+.cs-link-dialog input[hidden] { display: none; }
+.cs-link-dialog footer { margin-top: 16px; flex-wrap: wrap; }
 .queue-button-group, [data-testid="queue-button"], [data-testid="queue-mode-menu-trigger"],
 [data-testid="queue-overlay-toggle"], [data-testid="active-jobs-indicator"], [data-testid="queue-inline-progress"],
 [data-testid="help-center-button"], [data-testid="feedback-embed"], .comfyui-manager-button,

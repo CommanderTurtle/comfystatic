@@ -1,4 +1,6 @@
 import { parseWorkflow, graphs, filename, mergeExtra } from './workflow'
+import { isWorkflowLink, workflowViewerURL } from './links'
+import { readWorkflowLink } from './link-client'
 
 // The same public instance exposed by native Comfy's scripts/app.js shim.
 const app = (window as any).comfyAPI.app.app
@@ -35,6 +37,48 @@ async function importText(text: string, name = 'workflow.json') {
   const data = parseWorkflow(text)
   if (Array.isArray(data.nodes)) await app.loadGraphData(data, true, true, name, { skipAssetScans: true })
   else { await app.loadApiJson(data, name); notice('Imported API prompt. API JSON has no saved layout; the editor arranges its nodes.') }
+}
+let linkController: AbortController | undefined
+async function openLink(input: string) {
+  linkController?.abort()
+  const controller = linkController = new AbortController()
+  const result = await readWorkflowLink(input, state.base, controller.signal)
+  controller.signal.throwIfAborted()
+  if (result.workflow) await importText(JSON.stringify(result.workflow), result.name)
+  else await app.handleFile(new File([result.bytes], result.name, { type: result.mime }))
+  return result
+}
+function linkDialog() {
+  const dialog = document.createElement('dialog'); dialog.className = 'cs-dialog cs-link-dialog'
+  const title = document.createElement('h2'); title.textContent = 'Open workflow link'
+  const form = document.createElement('form')
+  const input = document.createElement('input'); input.type = 'text'; input.setAttribute('aria-label', 'Workflow URL or ln.kr fragment')
+  input.placeholder = 'https://… or #ss:…'; input.spellcheck = false
+  const output = document.createElement('input'); output.readOnly = true; output.hidden = true; output.setAttribute('aria-label', 'Comfystatic viewer URL')
+  const status = document.createElement('p'); status.setAttribute('role', 'status')
+  const actions = document.createElement('footer')
+  const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Cancel'; cancel.onclick = () => dialog.close()
+  const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'Copy viewer link'
+  const open = document.createElement('button'); open.type = 'submit'; open.textContent = 'Open workflow'
+  let controller: AbortController | undefined
+  const run = async (load: boolean) => {
+    controller?.abort(); controller = new AbortController()
+    input.disabled = open.disabled = copy.disabled = true; status.textContent = 'Reading link…'; output.hidden = true
+    try {
+      if (load) { await openLink(input.value); dialog.close() }
+      else {
+        const result = await readWorkflowLink(input.value, state.base, controller.signal)
+        output.value = workflowViewerURL(result.fragment, location.href); output.hidden = false
+        try { await navigator.clipboard.writeText(output.value); status.textContent = 'Viewer link copied.' }
+        catch { status.textContent = 'Copy the viewer URL below.'; output.focus(); output.select() }
+      }
+    } catch (error) { if (dialog.open) status.textContent = String(error) }
+    finally { input.disabled = open.disabled = copy.disabled = false }
+  }
+  form.onsubmit = e => { e.preventDefault(); void run(true) }; copy.onclick = () => void run(false)
+  actions.append(cancel, copy, open); form.append(input, status, output, actions); dialog.append(title, form)
+  dialog.onclose = () => { controller?.abort(); linkController?.abort(); dialog.remove() }
+  document.body.append(dialog); dialog.showModal(); input.focus()
 }
 function chooseFile(accept: string, action: (file: File) => Promise<void>) {
   const input = document.createElement('input'); input.type = 'file'; input.accept = accept
@@ -161,6 +205,7 @@ app.registerExtension({
     const brand = document.createElement('strong'); brand.textContent = 'comfystatic'; bar.append(brand)
     const button = (label: string, run: () => void) => { const b = document.createElement('button'); b.textContent = label; b.onclick = run; bar.append(b) }
     button('Open workflow', () => chooseFile('.json,.png,.webp,.avif,.flac,.mp4,.webm', f => app.handleFile(f)))
+    button('Open link', linkDialog)
     button('Paste JSON', pasteDialog)
     button('Save JSON', () => void save().catch(e => notice(String(e), 'error')))
     button('Node definitions', () => chooseFile('.json', async f => {
@@ -186,8 +231,20 @@ app.registerExtension({
         return
       }
       const text = e.clipboardData?.getData('text/plain') ?? ''
+      if (isWorkflowLink(text)) {
+        e.preventDefault(); e.stopImmediatePropagation(); void openLink(text).catch(e => notice(String(e), 'error')); return
+      }
       try { parseWorkflow(text) } catch { return }
       e.preventDefault(); e.stopImmediatePropagation(); void importText(text).catch(e => notice(String(e), 'error'))
+    }, true)
+    document.addEventListener('dragover', e => { if (e.dataTransfer?.types.includes('text/uri-list')) e.preventDefault() }, true)
+    document.addEventListener('drop', e => {
+      if (e.dataTransfer?.files.length) return
+      const target = e.target as HTMLElement
+      if (target.closest('input,textarea,[contenteditable]:not([contenteditable="false"])')) return
+      const text = e.dataTransfer?.getData('text/uri-list').split(/\r?\n/).find(line => line && !line.startsWith('#')) || e.dataTransfer?.getData('text/plain') || ''
+      if (!isWorkflowLink(text)) return
+      e.preventDefault(); e.stopImmediatePropagation(); void openLink(text).catch(e => notice(String(e), 'error'))
     }, true)
     window.addEventListener('comfystatic:notice', (e: any) => notice(e.detail))
     // Native Save/Save As write to our local API; download their successful writes.
@@ -205,8 +262,14 @@ app.registerExtension({
     for (const tab of app.extensionManager.getSidebarTabs()) {
       if (/queue|model|template|asset|manager|download/i.test(tab.id)) app.extensionManager.unregisterSidebarTab(tab.id)
     }
-    state.editor = { importText, serialize, save, fallbackTypes: templates }
+    state.editor = { importText, openLink, serialize, save, fallbackTypes: templates }
     state.readyEditor = true
     document.documentElement.dataset.comfystaticReady = 'true'
+    const openFragment = (fragment: string) => {
+      state.pendingLink = undefined
+      void openLink(fragment).catch(e => notice(String(e), 'error'))
+    }
+    window.addEventListener('comfystatic:open-link', (e: any) => openFragment(e.detail))
+    if (state.pendingLink) openFragment(state.pendingLink)
   }
 })

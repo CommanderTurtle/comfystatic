@@ -1,4 +1,5 @@
 import { LocalFiles } from './storage'
+import { isWorkflowFragment } from './links'
 
 const base = new URL('../', (document.currentScript as HTMLScriptElement).src)
 const realFetch = window.fetch.bind(window)
@@ -12,6 +13,24 @@ const defaults: Record<string, unknown> = {
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 const state: any = { files, base: base.href, capturedNodes: false, requests: [], blocked: [] }
 ;(window as any).comfystatic = state
+// Comfy owns UUID hashes for subgraphs. Consume import routes before its router
+// starts, including later same-document navigation, without patching native JS.
+const initialImport = isWorkflowFragment(location.hash)
+let nativeHash = initialImport ? '' : location.hash
+if (initialImport) {
+  state.pendingLink = location.hash
+  history.replaceState(history.state, '', location.pathname + location.search)
+}
+const captureImportRoute = (event: Event) => {
+  const hash = location.hash
+  if (!isWorkflowFragment(hash)) { nativeHash = hash; return }
+  event.stopImmediatePropagation()
+  state.pendingLink = hash
+  history.replaceState(history.state, '', location.pathname + location.search + nativeHash)
+  if (state.readyEditor) window.dispatchEvent(new CustomEvent('comfystatic:open-link', { detail: hash }))
+}
+window.addEventListener('hashchange', captureImportRoute, true)
+window.addEventListener('popstate', captureImportRoute, true)
 state.ready = Promise.all([
   realFetch(new URL('comfystatic/config.json', base)).then(r => r.json()),
   realFetch(new URL('comfystatic/nodes.json', base)).then(r => r.json()),
