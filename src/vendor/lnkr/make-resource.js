@@ -58,7 +58,7 @@ export function createMakeResources ({fetchImpl = globalThis.fetch, resourceURLF
   }
   function fromText (source, wrapped = false) {
     const text = String(source).trim();
-    const url = wrapped || /^https?:\/\/\S+$/i.test(text) ? extractSingleLinkDocument(text) : '';
+    const url = wrapped || /^(?:https?:\/\/\S+|#(?:share|p):\S+)$/i.test(text) ? extractSingleLinkDocument(text) : '';
     return isMakeLink(url) ? decode(url) : null;
   }
   function remember (target, source, wrapped = false) {

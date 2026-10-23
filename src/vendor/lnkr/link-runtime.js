@@ -25,9 +25,10 @@ const executableFragmentPrefixes = ["javascript", "markdown", "html"]
   .map(kind => executablePrefixForKind(kind).slice(0, -1));
 
 const fragmentRoutePattern = new RegExp(
-  `^#(?:${[...routePrefixes.map(([prefix]) => prefix.slice(0, -1)), ...executableFragmentPrefixes].join("|")})\\S+$`,
+  `^#(?:${[...routePrefixes.map(([prefix]) => prefix.slice(0, -1)), ...executableFragmentPrefixes].join("|")}):\\S+$`,
   "i"
 );
+const makeFragmentPattern = /^#(?:share|p):\S+$/;
 
 const imageSuffixes = new Set([
   "apng", "avif", "bmp", "cur", "gif", "heic", "heif", "ico", "jfif",
@@ -289,13 +290,14 @@ export function extractSingleLinkDocument (source, baseURL = "") {
     candidate = value.match(/^\[[^\]]*\]\((https?:\/\/\S+)\)$/i)?.[1] || "";
   }
   if (!candidate) {
-    candidate = fragmentRoutePattern.test(value) ? value : "";
+    candidate = fragmentRoutePattern.test(value) || makeFragmentPattern.test(value) ? value : "";
   }
   if (!candidate) return "";
 
   try {
     const decoded = decodeLinkEntities(candidate);
     if (decoded.startsWith("#")) {
+      if (makeFragmentPattern.test(decoded)) return new URL(decoded, "https://app.shel.sh/make/").href;
       if (!baseURL) return "";
       return new URL(decoded, baseURL).href;
     }

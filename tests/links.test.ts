@@ -86,6 +86,11 @@ test('Make JSON share envelopes survive a superlink and never require the Make s
   const pointer = 'https://cdn.example/pointer.txt', f = fixture({ [pointer]: make })
   expect((await resolveWorkflowLink(link(pointer, 'ss'), f.fetcher)).workflow).toEqual(graph)
   expect(f.calls.map(c => c.url)).toEqual([pointer])
+  for (const fragment of [new URL(make).hash, new URL(make).hash.replace(/^#p:/, '#share:')]) {
+    const bare = fixture({ [pointer]: fragment })
+    expect((await resolveWorkflowLink(link(pointer, 'ss'), bare.fetcher)).workflow).toEqual(graph)
+    expect(bare.calls.map(c => c.url)).toEqual([pointer])
+  }
 })
 test('metadata media stays binary for Comfy’s native importer', async () => {
   const url = 'https://cdn.example/workflow.png', bytes = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10)
