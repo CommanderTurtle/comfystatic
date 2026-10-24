@@ -2,17 +2,20 @@ import { mkdir, rename, rm, cp } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { unzipSync } from 'fflate'
 import { syncLnkr } from './sync-lnkr'
+import { syncOptions, syncHelp, localSource } from './source-options'
 
 const root = resolve(import.meta.dir, '..')
 const args = process.argv.slice(2)
-function option(name: string) { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1] }
+const options = syncOptions(args, process.env)
+if (options.help) { console.log(syncHelp); process.exit(0) }
+const selected = await localSource(options)
 async function get(url: string) {
   const r = await fetch(url, { signal: AbortSignal.timeout(120_000) })
   if (!r.ok) throw new Error(`${r.status}: ${url}`)
   return r
 }
 await mkdir(join(root, 'source'), { recursive: true })
-const frontendDir = option('--frontend-dir')
+const frontendDir = selected?.directory
 if (frontendDir) {
   const native = resolve(frontendDir)
   if (!await Bun.file(join(native, 'index.html')).exists()) throw new Error('--frontend-dir must contain the native index.html')
@@ -20,10 +23,13 @@ if (frontendDir) {
   await cp(native, pending, { recursive: true })
   await rm(join(root, 'source/native'), { recursive: true, force: true })
   await rename(pending, join(root, 'source/native'))
-  await Bun.write(join(root, 'source/frontend.json'), JSON.stringify({ version: option('--version') ?? 'local', source: 'Local ComfyUI frontend' }, null, 2) + '\n')
+  const indexSha256 = new Bun.CryptoHasher('sha256').update(await Bun.file(join(native, 'index.html')).arrayBuffer()).digest('hex')
+  await Bun.write(join(root, 'source/frontend.json'), JSON.stringify({ version: selected.version, source: 'Local ComfyUI frontend',
+    indexSha256, syncedAt: new Date().toISOString() }, null, 2) + '\n')
+  console.log(`Copied native ComfyUI frontend ${selected.version} from ${native}`)
 } else {
 const requirementsUrl = 'https://raw.githubusercontent.com/Comfy-Org/ComfyUI/master/requirements.txt'
-const version = option('--version') ?? (await (await get(requirementsUrl)).text()).match(/^comfyui-frontend-package==([^\s]+)$/m)?.[1]
+const version = options.version ?? selected?.version ?? (await (await get(requirementsUrl)).text()).match(/^comfyui-frontend-package==([^\s]+)$/m)?.[1]
 if (!version || !/^\d+\.\d+\.\d+(?:[a-z\d.]*)?$/.test(version)) throw new Error('Cannot resolve portable frontend version; specify --version X.Y.Z')
 const metadata = await (await get(`https://pypi.org/pypi/comfyui-frontend-package/${version}/json`)).json() as any
 const wheel = metadata.urls.find((f: any) => f.filename.endsWith('.whl'))
@@ -46,10 +52,13 @@ if (!await Bun.file(join(pending, 'index.html')).exists()) throw new Error('Nati
 await rm(join(root, 'source/native'), { recursive: true, force: true })
 await rename(pending, join(root, 'source/native'))
 await Bun.write(join(root, 'source/frontend.json'), JSON.stringify({ version, wheel: wheel.url, sha256: hash,
-  source: `https://github.com/Comfy-Org/ComfyUI_frontend/tree/v${version}` }, null, 2) + '\n')
+  source: `https://github.com/Comfy-Org/ComfyUI_frontend/tree/v${version}`,
+  requirements: selected?.requirements ? 'Local ComfyUI requirements.txt' : (options.version ? undefined : requirementsUrl), syncedAt: new Date().toISOString() }, null, 2) + '\n')
 }
+// Paths are local-only; build publishes frontend.json but never this selection.
+await Bun.write(join(root, 'source/selection.json'), JSON.stringify(selected ?? { source: 'upstream ComfyUI requirements' }, null, 2) + '\n')
 
-const comfyUrl = option('--comfy-url')
+const comfyUrl = options.comfyUrl
 if (comfyUrl) {
   const origin = new URL(comfyUrl.endsWith('/') ? comfyUrl : comfyUrl + '/')
   if (!['http:', 'https:'].includes(origin.protocol)) throw new Error('--comfy-url must be HTTP(S)')
@@ -85,16 +94,17 @@ if (comfyUrl) {
   if (failures.length) throw new Error(`Snapshot incomplete; previous snapshot preserved.\n${failures.join('\n')}`)
   await Bun.write(join(stage, 'nodes.json'), JSON.stringify(defs))
   await Bun.write(join(stage, 'extensions.json'), JSON.stringify(extensions.filter(p => !p.includes('/extensions/core/'))))
+  await Bun.write(join(stage, 'capture.json'), JSON.stringify({ origin: origin.href, capturedAt: new Date().toISOString(), nodes: Object.keys(defs).length, assets: seen.size }, null, 2) + '\n')
   await rm(snapshot, { recursive: true, force: true })
   await rename(stage, snapshot)
   console.log(`Captured ${Object.keys(defs).length} node definitions and ${seen.size} frontend assets`)
 }
 // For extensions with computed asset paths, copy the complete WEB_DIRECTORY.
-for (let i = 0; i < args.length; i++) if (args[i] === '--custom-web') {
-  const value = args[++i] ?? ''; const split = value.indexOf('=')
+for (const value of options.customWeb) {
+  const split = value.indexOf('=')
   const name = value.slice(0, split); const dir = value.slice(split + 1)
   if (split < 1 || !/^[\w.-]+$/.test(name) || name === '..') throw new Error('--custom-web expects extension-name=directory')
   await cp(resolve(dir), join(root, 'source/snapshot/web/extensions', name), { recursive: true })
 }
-await syncLnkr()
+if (!options.skipLnkr) await syncLnkr()
 console.log('Source ready. Run bun run build. Existing node snapshots are retained unless --comfy-url replaces them.')

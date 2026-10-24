@@ -6,7 +6,9 @@
   "scripts": {
     "sync": "bun scripts/sync.ts",
     "build": "bun scripts/build.ts",
-    "dev": "bun scripts/serve.ts",
+    "dev": "bun scripts/dev.ts",
+    "serve": "bun scripts/serve.ts",
+    "info": "bun scripts/info.ts",
     "start": "bun scripts/serve.ts",
     "test": "bun test"
   },

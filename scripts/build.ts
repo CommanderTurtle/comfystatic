@@ -51,6 +51,7 @@ await Bun.write(join(stage, 'index.html'), html)
 await Bun.write(join(stage, 'user.css'), '')
 await Bun.write(join(stage, 'api/userdata/user.css'), '')
 await cp(join(root, 'LICENSE'), join(stage, 'LICENSE'))
+// Sync keeps private local paths in source/selection.json, not public provenance.
 await Bun.write(join(stage, 'comfystatic/upstream.json'), JSON.stringify(version, null, 2))
 // Preserve prior dist if compilation fails; replace only a complete generated build.
 await rm(join(root, 'dist'), { recursive: true, force: true })

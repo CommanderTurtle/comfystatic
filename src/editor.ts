@@ -2,6 +2,7 @@ import { parseWorkflow, graphs, filename, mergeExtra } from './workflow'
 import { isWorkflowLink, workflowViewerURL } from './links'
 import { readWorkflowLink } from './link-client'
 import { workflowFragment, hoistWorkflowURL } from './share'
+import { fallbackWidgets, fallbackWidgetSpec, subgraphTypes } from './fallback-widgets'
 
 // The same public instance exposed by native Comfy's scripts/app.js shim.
 const app = (window as any).comfyAPI.app.app
@@ -124,9 +125,12 @@ function pasteDialog() {
 function registerFallback(data: any) {
   const LG = (window as any).LiteGraph
   const Base = (window as any).LGraphNode ?? LG.LGraphNode
+  const nativeWidgets = (window as any).comfyAPI.widgets?.ComfyWidgets
+  const widgetInputs = (window as any).comfyAPI.widgetInputs
+  const subgraphs = subgraphTypes(data)
   let count = 0
   for (const graph of graphs(data)) for (const n of graph.nodes ?? []) {
-    if (LG.registered_node_types[n.type]) continue
+    if (subgraphs.has(n.type) || LG.registered_node_types[n.type]) continue
     // Subgraph definitions are registered by native Comfy before this hook.
     templates.set(n.type, structuredClone(n))
     class WorkflowNode extends Base {
@@ -140,19 +144,34 @@ function registerFallback(data: any) {
         this.prepare(templates.get(n.type))
       }
       prepare(raw: any) {
+        for (const widget of [...(this.widgets ?? [])]) this.removeWidget(widget)
         this.raw = structuredClone(raw); this.widgets = []; this.inputs = []; this.outputs = []
         for (const slot of raw.inputs ?? []) this.addInput(slot.name, slot.type, { ...slot, link: null })
         for (const slot of raw.outputs ?? []) this.addOutput(slot.name, slot.type, { ...slot, links: null })
-        const values = raw.widgets_values ?? []
-        for (const [i, value] of Object.entries(values)) {
-          const type = typeof value === 'number' ? 'number' : typeof value === 'boolean' ? 'toggle' : 'text'
-          const w = this.addWidget(type, Array.isArray(values) ? `value ${Number(i) + 1}` : i,
-            typeof value === 'object' ? JSON.stringify(value) : value, () => this.graph?.change(), type === 'number' ? { precision: 6, step: 10 } : {})
-          if (value !== null && typeof value === 'object') w.serializeValue = () => { try { return JSON.parse(w.value) } catch { return value } }
+        for (const { name, type, value, multiline, slot } of fallbackWidgets(raw)) {
+          const spec = fallbackWidgetSpec(value, multiline)
+          const w = multiline && nativeWidgets?.STRING
+            ? nativeWidgets.STRING(this, name, spec, app).widget
+            : this.addWidget(type, name, typeof value === 'object' ? JSON.stringify(value) : value,
+              () => this.graph?.change(), type === 'number' ? { precision: 6, step: 10 } : {})
+          w.value = typeof value === 'object' ? JSON.stringify(value) : value
+          if (slot) {
+            const input = this.inputs.find((input: any) => input.widget?.name === name)
+            if (input) widgetInputs?.setWidgetConfig?.(input, spec)
+          }
+          if (typeof value === 'object') w.serializeValue = () => { try { return JSON.parse(w.value) } catch { return value } }
         }
         this.size = raw.size ? [...raw.size] : [300, Math.max(80, 55 + this.widgets.length * 26)]
       }
-      configure(raw: any) { this.prepare(raw); super.configure(raw) }
+      configure(raw: any) {
+        this.prepare(raw); super.configure(raw)
+        // Native configure restores slot metadata; reattach its nonserialized
+        // widget-config getter afterwards for native subgraph promotion.
+        for (const { name, value, multiline, slot } of fallbackWidgets(raw)) if (slot) {
+          const input = this.inputs.find((input: any) => input.widget?.name === name)
+          if (input) widgetInputs?.setWidgetConfig?.(input, fallbackWidgetSpec(value, multiline))
+        }
+      }
       onSerialize(out: any) {
         for (const [key, value] of Object.entries(this.raw ?? {})) if (!(key in out)) out[key] = structuredClone(value)
         if (this.raw?.widgets_values && !Array.isArray(this.raw.widgets_values)) {
@@ -198,7 +217,7 @@ app.registerExtension({
     state.loadingWorkflow = structuredClone(data)
     const count = registerFallback(data)
     if (count) {
-      notice(`${count} custom node type${count === 1 ? '' : 's'} preserved with generic widgets. Capture /object_info to restore their exact controls.`)
+      notice(`${count} node type${count === 1 ? '' : 's'} use workflow-derived fallback widgets, not full definitions. Capture /object_info from your ComfyUI for exact controls and choices.`)
       setTimeout(() => app.updateVueAppNodeDefs?.(state.nodes), 0)
     }
   },
@@ -248,7 +267,7 @@ app.registerExtension({
       await app.registerNodes(); await app.loadGraphData(current, true, true, active())
       notice(`Loaded ${Object.keys(defs).length} native node definitions.`)
     }))
-    const badge = document.createElement('span'); badge.textContent = `LOCAL · ${state.frontend}`; badge.title = 'No backend. Workflows stay in this browser.'; bar.append(badge)
+    const badge = document.createElement('span'); badge.textContent = `ComfyUI ${state.frontend} · ${state.capturedNodes ? 'captured nodes' : 'starter nodes'}`; badge.title = 'Native frontend version. Source details: comfystatic/upstream.json. No execution backend.'; bar.append(badge)
     document.body.append(bar)
     document.addEventListener('paste', e => {
       const target = e.target as HTMLElement
