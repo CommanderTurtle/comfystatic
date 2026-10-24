@@ -6,7 +6,7 @@ export function readWorkflowLink(input: string, base: string, signal?: AbortSign
   return new Promise((resolve, reject) => {
     const frame = document.createElement('iframe'), id = crypto.randomUUID()
     frame.hidden = true; frame.title = 'Workflow link importer'
-    frame.setAttribute('sandbox', 'allow-scripts')
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin')
     frame.referrerPolicy = 'no-referrer'
     frame.src = new URL('comfystatic/link-import.html', base).href
     const finish = (error?: Error, value?: LinkedWorkflow) => {

@@ -4,3 +4,4 @@ node_modules/
 .work/
 test-results/
 .env
+.temp/
