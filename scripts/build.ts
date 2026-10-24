@@ -19,6 +19,7 @@ await Bun.write(join(stage, 'comfystatic/config.json'), JSON.stringify({ fronten
   extensions: [...custom, '/extensions/comfystatic/editor.js'], capturedNodes: await nodes.exists() }))
 for (const [entry, output, format] of [['src/offline.ts', 'comfystatic/offline.js', 'iife'],
   ['src/link-frame.ts', 'comfystatic/link-import.js', 'iife'],
+  ['src/share-page.ts', 'comfystatic/share-page.js', 'iife'],
   ['src/editor.ts', 'extensions/comfystatic/editor.js', 'esm']] as const) {
   const result = await Bun.build({ entrypoints: [join(root, entry)], target: 'browser', format,
     minify: false, external: ['../../scripts/app.js'] })
@@ -27,6 +28,8 @@ for (const [entry, output, format] of [['src/offline.ts', 'comfystatic/offline.j
 }
 await cp(join(root, 'src/editor.css'), join(stage, 'comfystatic/editor.css'))
 await cp(join(root, 'src/link-import.html'), join(stage, 'comfystatic/link-import.html'))
+await cp(join(root, 'src/share-page.html'), join(stage, 'links.html'))
+await cp(join(root, 'src/share-page.css'), join(stage, 'comfystatic/share-page.css'))
 for (const [input, output] of [['LICENSE', 'lnkr-LICENSE'], ['upstream.json', 'lnkr-upstream.json'],
   ['vendor/licenses/pako-NOTICE.txt', 'pako-NOTICE.txt']]) {
   await cp(join(root, 'src/vendor/lnkr', input!), join(stage, 'comfystatic', output!))

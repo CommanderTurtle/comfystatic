@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'">
+<title>comfystatic · links</title>
+<link rel="stylesheet" href="./comfystatic/share-page.css">
+<script defer src="./comfystatic/share-page.js"></script></head>
+<body><main>
+<header><a href="./">comfystatic</a><span>links</span></header>
+<form id="share-form">
+<label for="source">Workflow URL, hashtag code, or JSON</label>
+<textarea id="source" placeholder="https://huggingface.co/…/workflow.json or #ss:…" spellcheck="false" required></textarea>
+<div class="row"><label class="file">Upload JSON<input id="upload" type="file" accept=".json,application/json"></label>
+<select id="mode" aria-label="Link type"><option value="source">Source link · fetch on open</option><option value="embed">Embedded JSON · DEFLATE</option></select>
+<button type="submit">Create link</button></div>
+</form>
+<p id="status" role="status" aria-live="polite"></p>
+<section id="result" hidden>
+<label for="viewer-url">Comfystatic URL</label><textarea id="viewer-url" readonly spellcheck="false"></textarea>
+<div class="row"><button id="copy" type="button">Copy link</button><a id="open" target="_blank" rel="noopener noreferrer">Open workflow</a><button id="download" type="button">Download JSON</button><a id="make" target="_blank" rel="noopener noreferrer">Hoist to Make</a></div>
+</section>
+</main></body></html>

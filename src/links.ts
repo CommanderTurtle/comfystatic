@@ -8,19 +8,21 @@ import { parseWorkflow } from './workflow'
 export type LinkedWorkflow = { bytes: Uint8Array; name: string; mime: string; fragment: string; sources: string[]; workflow?: any }
 const maxBytes = 32 * 1024 * 1024
 const maxHops = 12
-const modes = /^(?:ss|s|sm|sj|sh|hs|lr|l|lf|i|media|pdf):/
+const modes = /^(?:ss|s|sm|sj|sh|hs|lr|l|lf|i|media|pdf|share|p):/
 const base = 'https://comfystatic.invalid/' // Only a base for bare fragment pointers, never fetched.
 
 export function isWorkflowLink(input: string) {
-  return /^(?:https?:\/\/\S+|#[^\s]+|(?:ss|s|sm|sj|sh|hs|lr|l|lf|i|media|pdf):\S+)$/i.test(input.trim())
+  return /^(?:https?:\/\/\S+|#[^\s]+|(?:ss|s|sm|sj|sh|hs|lr|l|lf|i|media|pdf|share|p):\S+)$/i.test(input.trim())
 }
 
 function locator(input: string): { target?: string; fragment?: string; text?: string; superlink?: boolean } {
   const value = input.trim()
   if (!value) throw Error('Enter a workflow URL or ln.kr fragment.')
+  if (/^#?(?:share|p):/.test(value)) return { target: 'https://app.shel.sh/make/' + (value.startsWith('#') ? value : '#' + value), fragment: value.startsWith('#') ? value : '#' + value }
   const bare = value.startsWith('#') || modes.test(value)
   const url = bare ? new URL(value.startsWith('#') ? value : '#' + value, base) : new URL(validateLinkTarget(value))
   const fragment = url.hash.slice(1)
+  if (/^(?:share|p):/.test(fragment)) return { target: 'https://app.shel.sh/make/#' + fragment, fragment: '#' + fragment }
   const route = splitLinkFragment(fragment)
   if (route.mode) return { target: decodeLinkTarget(route.payload).target, fragment: '#' + fragment, superlink: route.mode === 'super-source' }
   if (fragment) {
@@ -46,7 +48,7 @@ function locator(input: string): { target?: string; fragment?: string; text?: st
 
 export function isWorkflowFragment(fragment: string) {
   if (!fragment.startsWith('#') || fragment.length < 2 || /^#[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(fragment)) return false
-  if (/^#(?:ss|s|sm|sj|sh|hs|lr|l|lf|i|media|pdf|r|m|h):/.test(fragment)) return true
+  if (/^#(?:ss|s|sm|sj|sh|hs|lr|l|lf|i|media|pdf|r|m|h|share|p):/.test(fragment)) return true
   // Unprefixed text has an upstream magic/checksum. Legacy URL digits do not;
   // do not misclassify arbitrary native navigation as a compressed URL.
   try { decodeDocumentPayload(fragment.slice(1)); return true } catch { return false }

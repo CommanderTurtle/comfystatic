@@ -21,7 +21,7 @@ Open **http://127.0.0.1:8190/**. `bun start` is just a static file server, not a
 - Focus the canvas and press **Ctrl+V** to paste workflow JSON or a clipboard file with embedded workflow metadata. Native node copy/paste remains intact. **Paste JSON** is an optional convenience, not a required import step.
 - **Open workflow** uses the same native metadata importer as drag-and-drop. Copying a rendered picture through some apps strips metadata; use the original PNG file in that case.
 - Drag, connect, resize, group, copy, undo/redo, and double-click to add nodes using native Comfy controls. Workflows open in native tabs.
-- **Save JSON**, **Ctrl+S**, native Save/Save As, and **Save workflow JSON** in the canvas context menu download ordinary workflow JSON. A local copy is also kept in the native workflow sidebar.
+- **Download JSON**, **Ctrl+S**, native Save/Save As, and **Save workflow JSON** in the canvas context menu download ordinary workflow JSON. A local copy is also kept in the native workflow sidebar.
 - Settings, workflows, and drafts live in this browser's local storage/IndexedDB. Export JSON for portable backups; clearing site data removes the local library.
 
 Generation is deliberately unavailable. The run controls and backend-only sidebar pages are removed; queue requests cannot execute. The native editor's external fetch/XHR/WebSocket/beacon traffic is blocked, with a same-origin Content Security Policy as a backstop. Explicit workflow-link imports use a separate sandboxed static document for public file reads, not a proxy or application backend. The static host still serves the application files; this is not a service-worker offline installation.
@@ -30,7 +30,9 @@ Generation is deliberately unavailable. The run controls and backend-only sideba
 
 **Open link** accepts public workflow JSON/media URLs, shortened ln.kr links, and bare fragments such as `#s:…` or `#ss:…`. Pasting a link onto the focused canvas or dropping a URL works too. GitHub file links and Hugging Face model/dataset/Space file links use ln.kr's raw/resolve handling.
 
-**Copy viewer link** produces a URL on the current Comfystatic deployment. Opening that URL imports the workflow into the native editor. A one-line pointer file produces the matching `#ss:` superlink; nested bare hashtags, Markdown links and anchors use the unchanged ln.kr parser. ln.kr text payloads and mk.it file shares containing workflows are also supported. JSON is treated as data; linked JavaScript/HTML is never executed. PNG and other supported metadata files go through Comfy's native importer.
+Imports (including dropped/uploaded files and pasted JSON) update the address bar with a self-contained workflow. **Copy link** shares the current graph, including edits. Embedded links use Make's existing `#share:` file envelope with level-9 DEFLATE; **Hoist to Make** opens that exact same hashtag under `https://app.shel.sh/make/`. Native graph UUIDs stay internal instead of replacing the share URL.
+
+**Link compressor** opens `links.html`, a lightweight link-only page. Enter a JSON URL or hashtag code to create a short source pointer, choose **Embedded JSON** for a self-contained snapshot, or upload JSON. Source pointers fetch on open; embedded links need no original file host. A one-line pointer file produces the matching `#ss:` superlink; nested bare hashtags, Markdown links and anchors use the unchanged ln.kr parser. ln.kr v1–v4 text payloads and Make file shares containing workflows are also supported. JSON is treated as data; linked JavaScript/HTML is never executed. PNG and other supported metadata files go through Comfy's native importer.
 
 Reads omit credentials and referrers. Sources must allow CORS; HTTPS pages cannot read insecure HTTP sources. Failed/circular pointers report an error without navigating away. Imports have a 30-second, 12-hop and 32-MiB total limit. Ordinary editor traffic remains blocked and no telemetry is added.
 

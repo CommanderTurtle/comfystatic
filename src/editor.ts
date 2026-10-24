@@ -1,6 +1,7 @@
 import { parseWorkflow, graphs, filename, mergeExtra } from './workflow'
 import { isWorkflowLink, workflowViewerURL } from './links'
 import { readWorkflowLink } from './link-client'
+import { workflowFragment, hoistWorkflowURL } from './share'
 
 // The same public instance exposed by native Comfy's scripts/app.js shim.
 const app = (window as any).comfyAPI.app.app
@@ -9,6 +10,7 @@ const state = (window as any).comfystatic
 const originals = new WeakMap<object, any>()
 const templates = new Map<string, any>()
 let downloadCount = 0
+let importingLink = false
 function notice(detail: string, severity = 'info') {
   app.extensionManager.toast.add({ severity, summary: 'comfystatic', detail, life: 6500 })
 }
@@ -22,6 +24,18 @@ function active() { return app.extensionManager.workflow.activeWorkflow }
 function serialize() {
   const data = app.rootGraph.serialize()
   return mergeExtra(originals.get(active() ?? app.graph), data)
+}
+function publish(data: any) {
+  if (!state.readyEditor || importingLink) return
+  try { state.shareRoute.set(workflowFragment(data, active()?.filename)) }
+  catch (error) { notice(`Could not create workflow link: ${error}`, 'error') }
+}
+async function copyWorkflowLink() {
+  const fragment = workflowFragment(serialize(), active()?.filename)
+  state.shareRoute.set(fragment)
+  const url = workflowViewerURL(fragment, location.href)
+  try { await navigator.clipboard.writeText(url); notice('Workflow link copied.') }
+  catch { linkDialog(url) }
 }
 async function save() {
   // Native Save/Save As keeps tabs and local files consistent; its successful
@@ -44,17 +58,25 @@ async function openLink(input: string) {
   const controller = linkController = new AbortController()
   const result = await readWorkflowLink(input, state.base, controller.signal)
   controller.signal.throwIfAborted()
-  if (result.workflow) await importText(JSON.stringify(result.workflow), result.name)
-  else await app.handleFile(new File([result.bytes], result.name, { type: result.mime }))
+  importingLink = true
+  try {
+    if (result.workflow) await importText(JSON.stringify(result.workflow), result.name)
+    else await app.handleFile(new File([result.bytes], result.name, { type: result.mime }))
+    controller.signal.throwIfAborted()
+    // A successful import becomes a self-contained snapshot, not a local UUID
+    // or a pointer whose remote source can subsequently disappear.
+    state.shareRoute.set(workflowFragment(result.workflow ?? serialize(), result.name))
+  } finally { importingLink = false }
   return result
 }
-function linkDialog() {
+function linkDialog(viewerURL?: string) {
   const dialog = document.createElement('dialog'); dialog.className = 'cs-dialog cs-link-dialog'
   const title = document.createElement('h2'); title.textContent = 'Open workflow link'
   const form = document.createElement('form')
   const input = document.createElement('input'); input.type = 'text'; input.setAttribute('aria-label', 'Workflow URL or ln.kr fragment')
   input.placeholder = 'https://… or #ss:…'; input.spellcheck = false
   const output = document.createElement('input'); output.readOnly = true; output.hidden = true; output.setAttribute('aria-label', 'Comfystatic viewer URL')
+  if (viewerURL) { output.value = viewerURL; output.hidden = false }
   const status = document.createElement('p'); status.setAttribute('role', 'status')
   const actions = document.createElement('footer')
   const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Cancel'; cancel.onclick = () => dialog.close()
@@ -68,7 +90,8 @@ function linkDialog() {
       if (load) { await openLink(input.value); dialog.close() }
       else {
         const result = await readWorkflowLink(input.value, state.base, controller.signal)
-        output.value = workflowViewerURL(result.fragment, location.href); output.hidden = false
+        if (!result.workflow) throw Error('Open this metadata file first, then use Copy link to share its workflow JSON.')
+        output.value = workflowViewerURL(workflowFragment(result.workflow), location.href); output.hidden = false
         try { await navigator.clipboard.writeText(output.value); status.textContent = 'Viewer link copied.' }
         catch { status.textContent = 'Copy the viewer URL below.'; output.focus(); output.select() }
       }
@@ -158,12 +181,14 @@ app.registerExtension({
     app.loadApiJson = async (...args: any[]) => {
       await loadApi(...args)
       originals.delete(active() ?? app.graph)
+      publish(args[0])
     }
     const load = app.loadGraphData.bind(app)
     app.loadGraphData = async (data: any, clean: any, view: any, workflow: any, options: any) => {
       const result = await load(data, clean, view, workflow, { ...options, skipAssetScans: true })
       if (result === false) throw new Error('Native ComfyUI could not load this workflow.')
       if (data) originals.set(active() ?? app.graph, structuredClone(data))
+      if (data) publish(data)
       return result
     }
     // Run/queue shortcuts cannot accidentally execute even when a custom extension exposes one.
@@ -203,11 +228,18 @@ app.registerExtension({
   async setup() {
     const bar = document.createElement('nav'); bar.id = 'comfystatic-toolbar'; bar.setAttribute('aria-label', 'Static workflow tools')
     const brand = document.createElement('strong'); brand.textContent = 'comfystatic'; bar.append(brand)
-    const button = (label: string, run: () => void) => { const b = document.createElement('button'); b.textContent = label; b.onclick = run; bar.append(b) }
+    const button = (label: string, run: () => void) => { const b = document.createElement('button'); b.textContent = label; b.onclick = () => run(); bar.append(b) }
     button('Open workflow', () => chooseFile('.json,.png,.webp,.avif,.flac,.mp4,.webm', f => app.handleFile(f)))
     button('Open link', linkDialog)
     button('Paste JSON', pasteDialog)
-    button('Save JSON', () => void save().catch(e => notice(String(e), 'error')))
+    button('Download JSON', () => download(active()?.filename ?? 'workflow.json', serialize()))
+    button('Copy link', () => void copyWorkflowLink().catch(e => notice(String(e), 'error')))
+    button('Hoist to Make', () => {
+      const fragment = workflowFragment(serialize(), active()?.filename)
+      state.shareRoute.set(fragment)
+      window.open(hoistWorkflowURL(fragment), '_blank', 'noopener,noreferrer')
+    })
+    button('Link compressor', () => window.open(new URL('links.html', state.base), '_blank', 'noopener,noreferrer'))
     button('Node definitions', () => chooseFile('.json', async f => {
       const defs = JSON.parse(await f.text())
       if (!defs || !Object.values(defs).every((v: any) => v?.input && Array.isArray(v.output))) throw new Error('Expected an /object_info node-definition JSON file.')
