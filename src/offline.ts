@@ -1,8 +1,12 @@
 import { LocalFiles } from './storage'
 import { installShareRoute } from './share-route'
+import { extensionRoutes } from './extension-routes'
 
-const base = new URL('../', (document.currentScript as HTMLScriptElement).src)
+const base = new URL('../', import.meta.url)
 const realFetch = window.fetch.bind(window)
+window.addEventListener('vite:preloadError', (event: any) => {
+  console.error('Comfystatic module import failed:', event.payload?.message ?? event.payload, event.payload?.stack ?? '')
+})
 const files = new LocalFiles(base.pathname)
 const defaults: Record<string, unknown> = {
   'Comfy.UseNewMenu': 'Top', 'Comfy.Workflow.WorkflowTabsPosition': 'Topbar',
@@ -23,7 +27,7 @@ state.ready = Promise.all([
   realFetch(new URL('comfystatic/nodes.json', base)).then(r => r.json()),
   files.get('@nodes')
 ]).then(([config, nodes, saved]) => {
-  Object.assign(state, config, { nodes: { ...nodes, ...(saved ? JSON.parse(saved.text) : {}) } })
+  Object.assign(state, config, { extensions: extensionRoutes(config.extensions, base.href), nodes: { ...nodes, ...(saved ? JSON.parse(saved.text) : {}) } })
 })
 async function settings() { const saved = await files.get('@settings'); return { ...defaults, ...(saved ? JSON.parse(saved.text) : {}) } }
 function route(url: URL) {

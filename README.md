@@ -2,36 +2,59 @@
 
 The native ComfyUI editor, packaged for a static host. No Python, GPU, model downloads, accounts, or Comfy server are needed to view and edit workflows.
 
-## Run it directly — no wrapper needed
+## Build `dist/` from your ComfyUI installation
 
 Requires [Bun](https://bun.sh).
 
 ```sh
 bun install --frozen-lockfile
-bun run dev
+bun run build --comfy-dir "/path/to/ComfyUI"
 ```
 
-After the one-time install, **`bun run dev` is the one-command update, build and server flow**. Open **http://127.0.0.1:8190/**. It downloads the frontend version currently pinned by upstream ComfyUI, refreshes the vendored ln.kr library, builds `dist/`, then serves it. It does not launch Python, install models, clone/pull repositories, or require Vitality. Ctrl+C stops the server.
+**That imports the installed browser frontend, remembers the directory, and builds `dist/` in this project. ComfyUI does not need to be running.** No Python, GPU, server capture or Vitality is involved. Windows portable roots and built ComfyUI frontend clones work too. The local source is remembered in ignored `comfystatic.local.json`; subsequent **`bun run build`** copies from that same installation and rebuilds. A missing source fails the build instead of silently switching to upstream. Existing `dist/` is retained on import/compile failure.
 
-To use your own installation **and its actual node definitions** instead:
+For an exact browser-assets folder, use `--frontend-dir "/path/to/static"` instead. A frontend source clone must have its upstream browser build already present; a backend-only checkout without installed assets uses its requirements pin to download the official frontend wheel.
+
+### Wrap that build with Vitality (`/comfy/`, y/y)
+
+Run from the Comfystatic project directory:
+
+```sh
+bun run build
+vitality give --dir ./dist --base /comfy/ --inline y --no-public y
+cd dist/mywrap
+bun install
+bun run build
+```
+
+Deploy **`dist/mywrap/dist/`** at `/comfy/`. Wrap the generated **`dist` directory**, not the source repository. `y/y` means inline assets plus no-public. After rebuilding Comfystatic, generate a fresh wrapper; do not keep serving an older wrapper. If you want to keep wrappers across Comfystatic rebuilds, pass Vitality an absolute `--output` path outside `dist/`.
+
+### Run the same build directly
+
+`bun run dev` builds from the remembered source and serves **http://127.0.0.1:8190/**; `bun start` serves the current `dist/` without rebuilding. To select and serve a different installation in one command, use `bun run dev --comfy-dir "/path/to/ComfyUI"`. Without a remembered source or cache, build/dev downloads the official frontend version currently pinned by upstream ComfyUI. Ctrl+C stops the server. No separate development editor or renderer is used.
+
+Optionally, to capture **actual Python/custom-node definitions** from a running installation:
 
 ```sh
 bun run dev --comfy-dir "/path/to/ComfyUI" --comfy-url http://127.0.0.1:8188
 ```
 
-The local ComfyUI must already be running for `--comfy-url`; the directory by itself does not expose Python node definitions. Omit the URL if you only want its frontend assets. On Windows, the directory can be the portable root, e.g. `D:/ComfyUI_windows_portable`.
+Only `--comfy-url` needs a running ComfyUI. It is optional and is not remembered as a build prerequisite. Workflow JSON import works without it; see the custom-node limitations below.
 
 | Command | What it does |
 | --- | --- |
-| `bun run dev [sync options]` | Update/copy sources → build → serve |
+| `bun run build --comfy-dir PATH` | Import/remember this local install → build `dist/`; no server |
+| `bun run dev [source options]` | Same build → serve |
 | `bun run dev --cached` | Build the existing cache → serve; no downloads |
 | `bun start` / `bun run serve` | Serve an already-built `dist/`; no sync or build |
 | `bun run sync [options]` | Update/copy sources only |
-| `bun run build` | Build the existing source cache only |
+| `bun run build` | Rebuild from the remembered source (or existing upstream cache) |
+| `bun run build --cached` | Build only the cached assets; no source refresh |
+| `bun run build --upstream` | Forget the local source and use upstream's official frontend |
 | `bun run info` | Print exact source/version/checksum and node-catalog status |
 | `bun run dev --help` | List source options without starting anything |
 
-`HOST`, `PORT`, and `BASE_PATH` configure the static server (defaults: `127.0.0.1`, `8190`, `/`). `COMFY_DIR` and `COMFY_URL` can supply local source defaults; explicit CLI flags override them. Directory/URL flags apply to that invocation, not an implicit saved configuration. Add `--skip-lnkr` to keep the existing vendored link library. No update polling happens in the web page or while the static server runs; syncing is an explicit command.
+`HOST`, `PORT`, and `BASE_PATH` configure the static server (defaults: `127.0.0.1`, `8190`, `/`). `COMFY_DIR` and `COMFY_URL` can supply defaults; explicit CLI source flags override the remembered source. Build uses the committed vendored link library; `bun run sync` explicitly refreshes it (or pass `--skip-lnkr`). No update polling happens in the web page or while the static server runs.
 
 Deploy the **complete contents** of `dist/` on an ordinary HTTPS static host, including `comfystatic/link-import.html` and `links.html`. Subdirectory hosting is supported. Use HTTP(S), not a `file://` URL. Vitality is optional packaging, not Comfystatic's build or runtime.
 
@@ -68,13 +91,13 @@ Only the wheel's `comfyui_frontend_package/static/` browser files are needed; th
 
 ```sh
 # Follow upstream ComfyUI's current pin and open the result.
-bun run dev
+bun run dev --upstream
 
 # Or use a particular native frontend release.
 bun run dev --version 1.57.1
 ```
 
-`source/` contains the ignored native cache and optional node snapshot. `dist/` is the generated static site. Rebuilding alone never downloads anything. The resulting `dist/comfystatic/upstream.json` records the exact version and checksum. `sync` also refreshes the unchanged ln.kr library from its current remote `main`; `src/vendor/lnkr/upstream.json` pins the commit and individual file hashes. No ln.kr checkout is modified or needed to build.
+`source/` contains the ignored native cache and optional node snapshot. `dist/` is the generated static site. A remembered local installation supplies each build; `--cached` skips source refresh. The resulting `dist/comfystatic/upstream.json` records the exact version and checksum. `sync` also refreshes the unchanged ln.kr library from its current remote `main`; `src/vendor/lnkr/upstream.json` pins the commit and individual file hashes. No ln.kr checkout is modified or needed to build.
 
 ### Use a local installation or frontend clone
 

@@ -189,6 +189,15 @@ app.registerExtension({
   name: 'comfystatic.local-editor',
   async init() {
     await state.ready
+    const handleFile = app.handleFile.bind(app)
+    app.handleFile = async (file: File, ...args: any[]) => {
+      // JSON is workflow data, not media metadata. Use the same importer as
+      // pasted/shared JSON regardless of the browser's file MIME detection.
+      if (/\.json$/i.test(file.name) || /(?:application|text)\/(?:[^;]+\+)?json/i.test(file.type)) {
+        return importText(await file.text(), file.name.replace(/\.json$/i, ''))
+      }
+      return handleFile(file, ...args)
+    }
     const clean = app.clean.bind(app)
     app.clean = () => {
       const graph = app.graph

@@ -11,8 +11,8 @@ if (options.help) {
 }
 if (cached && syncArgs.some(arg => arg !== '--')) throw Error('--cached cannot be combined with sync options; omit it to update/copy a source.')
 const root = resolve(import.meta.dir, '..')
-for (const script of [...(cached ? [] : ['sync']), 'build', 'serve']) {
-  const child = Bun.spawn([process.execPath, resolve(import.meta.dir, script + '.ts'), ...(script === 'sync' ? syncArgs : [])],
+for (const script of ['build', 'serve']) {
+  const child = Bun.spawn([process.execPath, resolve(import.meta.dir, script + '.ts'), ...(script === 'build' ? args : [])],
     { cwd: root, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit', env: process.env })
   const stop = () => child.kill()
   process.on('SIGINT', stop); process.on('SIGTERM', stop)

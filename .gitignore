@@ -4,4 +4,5 @@ node_modules/
 .work/
 test-results/
 .env
+comfystatic.local.json
 .temp/

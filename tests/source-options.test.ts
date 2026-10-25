@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, mkdir, rm, writeFile, readFile, copyFile, symlink, unlink, realpath } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile, readFile, copyFile, cp, symlink, unlink, realpath } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { localSource, syncOptions } from '../scripts/source-options'
+import { projectOptions, sourceConfig } from '../scripts/project-source'
 
 test('sync options are explicit, strict and allow environment defaults', () => {
   expect(syncOptions([], { COMFY_DIR: '/local/comfy', COMFY_URL: 'http://localhost:8188' }).comfyDir).toBe('/local/comfy')
@@ -48,7 +49,7 @@ test('local sync copies assets, records provenance and retains node captures wit
   let linked = false
   try {
     await mkdir(join(dir, 'scripts'))
-    for (const name of ['sync.ts', 'sync-lnkr.ts', 'source-options.ts']) await copyFile(resolve(import.meta.dir, '../scripts', name), join(dir, 'scripts', name))
+    for (const name of ['sync.ts', 'sync-lnkr.ts', 'source-options.ts', 'project-source.ts']) await copyFile(resolve(import.meta.dir, '../scripts', name), join(dir, 'scripts', name))
     await symlink(resolve(import.meta.dir, '../node_modules'), dependencies, process.platform === 'win32' ? 'junction' : 'dir')
     linked = true
     await mkdir(join(dir, 'native/assets'), { recursive: true })
@@ -67,6 +68,54 @@ test('local sync copies assets, records provenance and retains node captures wit
     expect(metadata.indexSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(await readFile(join(dir, 'source/native/assets/native.js'), 'utf8')).toBe('/* original native bytes */')
     expect(await readFile(join(dir, 'source/snapshot/nodes.json'), 'utf8')).toBe('{"ExistingCapture":{}}')
+    expect(JSON.parse(await readFile(join(dir, sourceConfig), 'utf8')).frontendDir).toBe(await realpath(join(dir, 'native')))
+  } finally {
+    if (linked) await unlink(dependencies)
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('local source is remembered for builds/dev and explicit sources can replace it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'comfystatic-project-source-'))
+  try {
+    await writeFile(join(dir, sourceConfig), JSON.stringify({ comfyDir: '/saved/install' }))
+    expect((await projectOptions(dir, [], {})).comfyDir).toBe('/saved/install')
+    expect((await projectOptions(dir, ['--frontend-dir', '/other'], {})).frontendDir).toBe('/other')
+    expect((await projectOptions(dir, ['--version', '1.57.1'], {})).comfyDir).toBeUndefined()
+    expect((await projectOptions(dir, ['--upstream'], {})).comfyDir).toBeUndefined()
+    expect((await projectOptions(dir, [], { COMFY_DIR: '/env/install' })).comfyDir).toBe('/env/install')
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+
+test('one build imports an idle local install, future builds reuse it, and failed imports preserve dist', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'comfystatic-build-'))
+  const dependencies = join(dir, 'node_modules')
+  let linked = false
+  try {
+    for (const name of ['scripts', 'src']) await cp(resolve(import.meta.dir, '..', name), join(dir, name), { recursive: true })
+    await copyFile(resolve(import.meta.dir, '../LICENSE'), join(dir, 'LICENSE'))
+    await symlink(resolve(import.meta.dir, '../node_modules'), dependencies, process.platform === 'win32' ? 'junction' : 'dir')
+    linked = true
+    const install = join(dir, 'ComfyUI/web')
+    await mkdir(join(install, 'assets'), { recursive: true })
+    await writeFile(join(install, 'index.html'), '<html><head><script type="module" src="./assets/native.js"></script></head><body></body></html>')
+    await writeFile(join(install, 'assets/native.js'), '/* local version 1 */')
+    const build = (...args: string[]) => spawnSync(process.execPath, ['scripts/build.ts', ...args],
+      { cwd: dir, encoding: 'utf8', windowsHide: true, env: { ...process.env, COMFY_DIR: '', COMFY_URL: '' } })
+    let result = build('--comfy-dir', join(dir, 'ComfyUI'))
+    expect(result.status, result.stdout + result.stderr).toBe(0)
+    expect(await readFile(join(dir, 'dist/assets/native.js'), 'utf8')).toContain('local version 1')
+    expect(await readFile(join(dir, 'dist/index.html'), 'utf8')).toContain('<script type="module" src="./comfystatic/offline.js">')
+    const bootstrap = await readFile(join(dir, 'dist/comfystatic/offline.js'), 'utf8')
+    expect(bootstrap).toContain('import.meta.url')
+    expect(bootstrap).not.toContain('document.currentScript')
+    await writeFile(join(install, 'assets/native.js'), '/* local version 2 */')
+    result = build()
+    expect(result.status, result.stdout + result.stderr).toBe(0)
+    expect(await readFile(join(dir, 'dist/assets/native.js'), 'utf8')).toContain('local version 2')
+    result = build('--comfy-dir', join(dir, 'missing-install'))
+    expect(result.status).not.toBe(0)
+    expect(await readFile(join(dir, 'dist/assets/native.js'), 'utf8')).toContain('local version 2')
   } finally {
     if (linked) await unlink(dependencies)
     await rm(dir, { recursive: true, force: true })

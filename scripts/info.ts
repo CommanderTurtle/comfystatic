@@ -1,5 +1,6 @@
 import { resolve, join } from 'node:path'
 import { coreNodes } from '../src/core-nodes'
+import { sourceConfig } from './project-source'
 
 const root = resolve(import.meta.dir, '../source')
 const metadata = Bun.file(join(root, 'frontend.json'))
@@ -9,6 +10,8 @@ const nodes = Bun.file(join(root, 'snapshot/nodes.json'))
 const capture = Bun.file(join(root, 'snapshot/capture.json'))
 const selection = Bun.file(join(root, 'selection.json'))
 const report = { frontend,
+  rememberedSource: await Bun.file(resolve(root, '..', sourceConfig)).exists()
+    ? await Bun.file(resolve(root, '..', sourceConfig)).json() : null,
   selection: await selection.exists() ? await selection.json() : 'Older sync; source details are in frontend metadata above.',
   nodeDefinitions: await nodes.exists() ? { source: 'captured /object_info', count: Object.keys(await nodes.json()).length,
     capture: await capture.exists() ? await capture.json() : 'Older snapshot; capture origin not recorded.' }

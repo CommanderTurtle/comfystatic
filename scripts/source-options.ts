@@ -4,6 +4,7 @@ import { resolve, join, dirname, basename } from 'node:path'
 export const syncHelp = `Sync native ComfyUI browser assets (never runs Python or git pull).
 
 bun run sync [options]
+bun run build [options]        import/remember a local source and build dist; no server
 bun run dev [options]          sync, build, then serve; no Vitality needed
 
   --comfy-dir PATH             ComfyUI installation/portable folder or built frontend clone
@@ -12,9 +13,10 @@ bun run dev [options]          sync, build, then serve; no Vitality needed
   --comfy-url URL              Capture actual /object_info and custom frontend modules
   --custom-web NAME=PATH       Include a complete trusted extension web directory
   --skip-lnkr                  Leave the vendored ln.kr library unchanged
+  --upstream                   Forget the saved local source and follow upstream
   --help                      Show this help without downloading/building anything
 
-Without a directory, sync reads upstream ComfyUI master/requirements.txt and
+Without an explicit or remembered source, sync reads upstream ComfyUI master/requirements.txt and
 downloads its pinned official frontend wheel, verifying the PyPI SHA-256.
 COMFY_DIR and COMFY_URL can supply local defaults. Local directories are read,
 not updated or built. If only a backend checkout is found, its requirements.txt
@@ -26,7 +28,7 @@ export function syncOptions(args: string[], env: Record<string, string | undefin
   for (let i = 0; i < args.length; i++) {
     const name = args[i]!
     if (name === '--') continue
-    if (['--help', '--skip-lnkr'].includes(name)) { flags.add(name); continue }
+    if (['--help', '--skip-lnkr', '--upstream'].includes(name)) { flags.add(name); continue }
     if (!['--comfy-dir', '--frontend-dir', '--comfy-url', '--version', '--custom-web'].includes(name)) throw Error(`Unknown option: ${name}. Use --help.`)
     const value = args[++i]
     if (!value || value.startsWith('--')) throw Error(`${name} requires a value.`)
@@ -35,7 +37,8 @@ export function syncOptions(args: string[], env: Record<string, string | undefin
     else values.set(name, value)
   }
   const frontendDir = values.get('--frontend-dir')
-  const comfyDir = values.get('--comfy-dir') ?? (frontendDir ? undefined : env.COMFY_DIR)
+  const comfyDir = values.get('--comfy-dir') ?? (frontendDir || flags.has('--upstream') ? undefined : env.COMFY_DIR)
+  if (flags.has('--upstream') && (frontendDir || comfyDir)) throw Error('--upstream cannot be combined with a local source.')
   if (frontendDir && comfyDir) throw Error('Choose --comfy-dir or --frontend-dir, not both.')
   const version = values.get('--version')
   if (version && !/^\d+\.\d+\.\d+(?:[a-z\d.]*)?$/.test(version)) throw Error('--version expects a frontend release such as 1.57.1.')
@@ -43,7 +46,7 @@ export function syncOptions(args: string[], env: Record<string, string | undefin
   if (comfyUrl && !['http:', 'https:'].includes(new URL(comfyUrl).protocol)) throw Error('--comfy-url must be HTTP(S).')
   for (const value of customWeb) if (!/^(?!\.\.=)[\w.-]+=.+$/.test(value)) throw Error('--custom-web expects extension-name=directory.')
   return { frontendDir, comfyDir, comfyUrl, version,
-    customWeb, skipLnkr: flags.has('--skip-lnkr'), help: flags.has('--help') }
+    customWeb, upstream: flags.has('--upstream'), skipLnkr: flags.has('--skip-lnkr'), help: flags.has('--help') }
 }
 async function isFile(path: string) { try { return (await stat(path)).isFile() } catch { return false } }
 async function requirements(dir: string) {

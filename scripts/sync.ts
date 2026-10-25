@@ -2,11 +2,12 @@ import { mkdir, rename, rm, cp } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { unzipSync } from 'fflate'
 import { syncLnkr } from './sync-lnkr'
-import { syncOptions, syncHelp, localSource } from './source-options'
+import { syncHelp, localSource } from './source-options'
+import { projectOptions, sourceConfig } from './project-source'
 
 const root = resolve(import.meta.dir, '..')
 const args = process.argv.slice(2)
-const options = syncOptions(args, process.env)
+const options = await projectOptions(root, args)
 if (options.help) { console.log(syncHelp); process.exit(0) }
 const selected = await localSource(options)
 async function get(url: string) {
@@ -107,4 +108,12 @@ for (const value of options.customWeb) {
   await cp(resolve(dir), join(root, 'source/snapshot/web/extensions', name), { recursive: true })
 }
 if (!options.skipLnkr) await syncLnkr()
+// Remember the source, never a running server. Future builds copy this install.
+if (options.comfyDir || options.frontendDir || options.version) {
+  await Bun.write(join(root, sourceConfig), JSON.stringify({
+    ...(options.comfyDir ? { comfyDir: selected!.requested } : {}),
+    ...(options.frontendDir ? { frontendDir: selected!.requested } : {}),
+    ...(options.version ? { version: options.version } : {})
+  }, null, 2) + '\n')
+} else if (options.upstream) await rm(join(root, sourceConfig), { force: true })
 console.log('Source ready. Run bun run build. Existing node snapshots are retained unless --comfy-url replaces them.')

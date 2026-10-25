@@ -1,11 +1,23 @@
 import { cp, mkdir, rm, rename } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { coreNodes } from '../src/core-nodes'
+import { syncOptions, syncHelp } from './source-options'
+import { sourceConfig } from './project-source'
 
 const root = resolve(import.meta.dir, '..')
+const args = process.argv.slice(2).filter(arg => arg !== '--')
+const cached = args.includes('--cached')
+const sourceArgs = args.filter(arg => arg !== '--cached')
+if (syncOptions(sourceArgs).help) { console.log(syncHelp); process.exit(0) }
+if (cached && sourceArgs.length) throw Error('--cached cannot be combined with source options.')
 const source = join(root, 'source')
 const metadata = Bun.file(join(source, 'frontend.json'))
-if (!await metadata.exists()) throw new Error('Run bun run sync first.')
+if (!cached && (sourceArgs.length || process.env.COMFY_DIR || await Bun.file(join(root, sourceConfig)).exists() || !await metadata.exists())) {
+  const child = Bun.spawn([process.execPath, join(root, 'scripts/sync.ts'), ...sourceArgs, '--skip-lnkr'],
+    { cwd: root, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit', env: process.env })
+  if (await child.exited !== 0) throw Error('Source import failed; previous dist was not changed.')
+}
+if (!await metadata.exists()) throw new Error('No cached frontend. Use bun run build --comfy-dir /path/to/ComfyUI.')
 const version = await metadata.json()
 const stage = join(root, `.work/build-${Date.now()}`)
 await mkdir(stage, { recursive: true })
@@ -17,14 +29,17 @@ if (custom.length) await cp(join(source, 'snapshot/web'), stage, { recursive: tr
 await Bun.write(join(stage, 'comfystatic/nodes.json'), JSON.stringify(await nodes.exists() ? await nodes.json() : coreNodes))
 await Bun.write(join(stage, 'comfystatic/config.json'), JSON.stringify({ frontend: version.version,
   extensions: [...custom, '/extensions/comfystatic/editor.js'], capturedNodes: await nodes.exists() }))
-for (const [entry, output, format] of [['src/offline.ts', 'comfystatic/offline.js', 'iife'],
+for (const [entry, output, format] of [['src/offline.ts', 'comfystatic/offline.js', 'esm'],
   ['src/link-frame.ts', 'comfystatic/link-import.js', 'iife'],
   ['src/share-page.ts', 'comfystatic/share-page.js', 'iife'],
   ['src/editor.ts', 'extensions/comfystatic/editor.js', 'esm']] as const) {
   const result = await Bun.build({ entrypoints: [join(root, entry)], target: 'browser', format,
     minify: false, external: ['../../scripts/app.js'] })
   if (!result.success) throw new Error(result.logs.join('\n'))
-  await Bun.write(join(stage, output), result.outputs[0]!)
+  // Classic helper scripts may later be embedded by a static packager. Escaping the
+  // closing tag inside Bun's string literals preserves its value when inlined.
+  const code = await result.outputs[0]!.text()
+  await Bun.write(join(stage, output), format === 'iife' ? code.replace(/<\/script/gi, '<\\/script') : code)
 }
 await cp(join(root, 'src/editor.css'), join(stage, 'comfystatic/editor.css'))
 await cp(join(root, 'src/link-import.html'), join(stage, 'comfystatic/link-import.html'))
@@ -36,7 +51,7 @@ for (const [input, output] of [['LICENSE', 'lnkr-LICENSE'], ['upstream.json', 'l
 }
 const csp = "default-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
 let html = await Bun.file(join(stage, 'index.html')).text()
-html = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}"><script src="./comfystatic/offline.js"></script><link rel="stylesheet" href="./comfystatic/editor.css">`)
+html = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}"><script type="module" src="./comfystatic/offline.js"></script><link rel="stylesheet" href="./comfystatic/editor.css">`)
 html = html.replace(/<title>[^<]*<\/title>/, '<title>comfystatic</title>')
 // Native splash cleanup uses inline JS. Move it to a same-origin file for CSP.
 let inline = 0
